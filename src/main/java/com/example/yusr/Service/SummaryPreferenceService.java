@@ -1,5 +1,6 @@
 package com.example.yusr.Service;
 
+import com.example.yusr.Api.ApiException;
 import com.example.yusr.Model.Caregiver;
 import com.example.yusr.Model.SummaryPreference;
 import com.example.yusr.Repository.CaregiverRepository;
@@ -17,27 +18,31 @@ public class SummaryPreferenceService {
     private final CaregiverRepository caregiverRepository;
 
 
-    public SummaryPreference getSummaryPreferenceByCaregiverId(Integer caregiverId) {
-        return summaryPreferenceRepository.findSummaryPreferenceByCaregiverId(caregiverId);
+        public SummaryPreference getSummaryPreferenceByCaregiverId(Integer caregiverId) {
+            SummaryPreference summaryPreference=summaryPreferenceRepository.findSummaryPreferenceByCaregiverId(caregiverId);
+            if (summaryPreference == null) {
+                throw new ApiException("summary preference not found");
+            }
+        return summaryPreference;
     }
 
 
-    public String addSummaryPreference(SummaryPreference summaryPreference) {
+    public void addSummaryPreference(SummaryPreference summaryPreference) {
 
         Caregiver caregiver = caregiverRepository.findCaregiverById(summaryPreference.getCaregiverId());
 
         if (caregiver == null) {
-            return "caregiver not found";
+            throw new ApiException("caregiver not found");
         }
 
         if (caregiver.getPatientId() == null) {
-            return "caregiver is not assigned to a patient";
+            throw new ApiException("caregiver is not assigned to a patient");
         }
 
         SummaryPreference checkPreference = summaryPreferenceRepository.findSummaryPreferenceByCaregiverId(summaryPreference.getCaregiverId());
 
         if (checkPreference != null) {
-            return "summary preference already exists, you can update it";
+            throw new ApiException("summary preference already exists, you can update it");
         }
 
         summaryPreference.setLastGeneratedAt(null);
@@ -50,30 +55,29 @@ public class SummaryPreferenceService {
 
         summaryPreferenceRepository.save(summaryPreference);
 
-        return "summary preference added successfully";
     }
 
 
-    public String updateSummaryPreference(Integer id, SummaryPreference summaryPreference) {
+    public void updateSummaryPreference(Integer id, SummaryPreference summaryPreference) {
 
         SummaryPreference oldPreference = summaryPreferenceRepository.findSummaryPreferenceById(id);
 
         if (oldPreference == null) {
-            return "summary preference not found";
+            throw new ApiException("summary preference not found");
         }
 
         if (!oldPreference.getCaregiverId().equals(summaryPreference.getCaregiverId())) {
-            return "caregiver id cannot be changed";
+            throw new ApiException("caregiver id cannot be changed");
         }
 
         Caregiver caregiver = caregiverRepository.findCaregiverById(oldPreference.getCaregiverId());
 
         if (caregiver == null) {
-            return "caregiver not found";
+            throw new ApiException("caregiver not found");
         }
 
         if (caregiver.getPatientId() == null) {
-            return "caregiver is not assigned to a patient";
+            throw new ApiException("caregiver is not assigned to a patient");
         }
 
         oldPreference.setFrequency(summaryPreference.getFrequency());
@@ -87,38 +91,19 @@ public class SummaryPreferenceService {
 
         summaryPreferenceRepository.save(oldPreference);
 
-        return "summary preference updated successfully";
     }
 
 
-    public Boolean deleteSummaryPreference(Integer id) {
-
+    public void deleteSummaryPreference(Integer id) {
         SummaryPreference summaryPreference = summaryPreferenceRepository.findSummaryPreferenceById(id);
-
         if (summaryPreference == null) {
-            return false;
+            throw new ApiException("summary preference not found");
         }
 
         summaryPreferenceRepository.delete(summaryPreference);
-
-        return true;
     }
 
 
-    private LocalDateTime calculateNextGeneration(String frequency) {
-
-        LocalDateTime now = LocalDateTime.now();
-
-        if (frequency.equals("daily")) {
-            return now.plusDays(1);
-        }
-
-        if (frequency.equals("weekly")) {
-            return now.plusWeeks(1);
-        }
-
-        return now.plusMonths(1);
-    }
 
     public void updateAfterGeneration(Integer id) {
 
@@ -134,25 +119,42 @@ public class SummaryPreferenceService {
         summaryPreferenceRepository.save(summaryPreference);
     }
 
-    public String changeAutoGenerate(Integer caregiverId) {
+    public SummaryPreference changeAutoGenerate(Integer caregiverId) {
 
         SummaryPreference summaryPreference = summaryPreferenceRepository.findSummaryPreferenceByCaregiverId(caregiverId);
 
         if (summaryPreference == null) {
-            return "summary preference not found";
+            throw new ApiException("summary preference not found");
         }
 
         if (summaryPreference.getAutoGenerate()) {
             summaryPreference.setAutoGenerate(false);
             summaryPreference.setNextGenerationAt(null);
             summaryPreferenceRepository.save(summaryPreference);
-            return "automatic summary disabled";
+            return summaryPreference;
         }
 
         summaryPreference.setAutoGenerate(true);
         summaryPreference.setNextGenerationAt(calculateNextGeneration(summaryPreference.getFrequency()));
 
         summaryPreferenceRepository.save(summaryPreference);
-        return "automatic summary enabled";
+        return summaryPreference;
     }
+
+    //helper method
+    private LocalDateTime calculateNextGeneration(String frequency) {
+
+        LocalDateTime now = LocalDateTime.now();
+
+        if (frequency.equals("daily")) {
+            return now.plusDays(1);
+        }
+
+        if (frequency.equals("weekly")) {
+            return now.plusWeeks(1);
+        }
+
+        return now.plusMonths(1);
+    }
+
 }

@@ -1,6 +1,7 @@
 package com.example.yusr.Service;
 
 
+import com.example.yusr.Api.ApiException;
 import com.example.yusr.Model.Caregiver;
 import com.example.yusr.Model.Medication;
 import com.example.yusr.Model.MedicationSchedule;
@@ -42,13 +43,17 @@ public class PatientService {
     }
 
     public Patient getPatientById(Integer id){
-        return patientRepository.findPatientById(id);
+        Patient patient=patientRepository.findPatientById(id);
+        if (patient == null){
+            throw new ApiException("didn't find the requested patient");
+        }
+        return patient;
     }
-    public Boolean updatePatient(Integer id,Patient patient){
-        Patient oldPatient=patientRepository.findPatientById(id);
 
+    public void updatePatient(Integer id,Patient patient){
+        Patient oldPatient=patientRepository.findPatientById(id);
         if (oldPatient==null){
-            return false;
+            throw new ApiException("didn't find the requested patient");
         }
 
         oldPatient.setFullName(patient.getFullName());
@@ -60,39 +65,37 @@ public class PatientService {
         oldPatient.setGender(patient.getGender());
         oldPatient.setMedicalNotes(patient.getMedicalNotes());
         patientRepository.save(oldPatient);
-        return true;
     }
 
 
 
-
     @Transactional
-    public String deletePatient(Integer patientId, Integer caregiverId){
+    public void deletePatient(Integer patientId, Integer caregiverId){
 
         Patient patient = patientRepository.findPatientById(patientId);
 
         if (patient == null){
-            return "patient not found";
+            throw new ApiException("didn't find the requested patient");
         }
 
         Caregiver caregiver = caregiverRepository.findCaregiverById(caregiverId);
 
         if (caregiver == null){
-            return "caregiver not found";
+            throw new ApiException("didn't find the requested caregiver");
         }
 
         if (caregiver.getPatientId() == null || !caregiver.getPatientId().equals(patientId)){
-            return "caregiver does not belong to patient";
+            throw new ApiException("caregiver does not belong to patient");
         }
 
         if (!caregiver.getRole().equals("primary")){
-            return "only primary caregiver can delete patient";
+            throw new ApiException("only primary caregiver can delete patient");
         }
 
         Boolean hasOtherCaregiver = caregiverRepository.existsCaregiverByPatientIdAndIdNot(patientId, caregiverId);
 
         if (hasOtherCaregiver){
-            return "unlink other caregivers before deleting patient";
+            throw new ApiException("unlink other caregivers before deleting patient");
         }
 
         // Delete medication logs, schedules, then medications
@@ -129,21 +132,20 @@ public class PatientService {
 
         // Finally delete patient
         patientRepository.delete(patient);
-
-        return "deleted";
     }
-    @Transactional
-    public String addPatientByCaregiver(Integer caregiverId, Patient patient){
 
-        Caregiver caregiver =
-                caregiverRepository.findCaregiverById(caregiverId);
+
+    @Transactional
+    public void addPatientByCaregiver(Integer caregiverId, Patient patient){
+
+        Caregiver caregiver = caregiverRepository.findCaregiverById(caregiverId);
 
         if (caregiver == null){
-            return "caregiver not found";
+            throw new ApiException("didn't find the requested caregiver");
         }
 
         if (caregiver.getPatientId() != null){
-            return "caregiver already has patient";
+            throw new ApiException("caregiver already has patient");
         }
 
         patient.setPatientCode(generatePatientCode());
@@ -159,54 +161,39 @@ public class PatientService {
         caregiverRepository.save(caregiver);
 
         try {
-
-            emailService.sendPatientCreatedEmail(
-                    caregiver.getEmail(),
-                    caregiver.getFullName(),
-                    patient.getFullName(),
-                    patient.getPatientCode()
-            );
-
+            emailService.sendPatientCreatedEmail(caregiver.getEmail(), caregiver.getFullName(), patient.getFullName(), patient.getPatientCode());
         } catch (Exception e) {
-
-            System.out.println(
-                    "Failed to send patient created email: "
-                            + e.getMessage()
-            );
+            System.out.println("Failed to send patient created email: " + e.getMessage());
         }
 
-        return "added";
     }
 
 
     @Transactional
-    public String linkExistingPatient(Integer caregiverId, String patientCode) {
+    public void linkExistingPatient(Integer caregiverId, String patientCode) {
 
         Caregiver caregiver = caregiverRepository.findCaregiverById(caregiverId);
 
         if (caregiver == null) {
-            return "caregiver not found";
+            throw new ApiException("caregiver not found");
         }
 
         if (caregiver.getPatientId() != null) {
-            return "caregiver already has patient";
+            throw new ApiException("caregiver already has patient");
         }
 
         if (patientCode == null || patientCode.trim().isEmpty()) {
-            return "patient code cannot be empty";
+            throw new ApiException("patient code cannot be empty");
         }
 
-        Patient patient =
-                patientRepository.findPatientByPatientCode(
-                        patientCode.trim().toUpperCase()
-                );
+        Patient patient = patientRepository.findPatientByPatientCode(patientCode.trim().toUpperCase());
 
         if (patient == null) {
-            return "patient not found";
+            throw new ApiException("didn't find the requested patient");
         }
 
         if (patient.getStatus().equals("active")) {
-            return "patient is already active";
+            throw new ApiException("patient is already active");
         }
 
         patient.setStatus("active");
@@ -218,10 +205,9 @@ public class PatientService {
 
         patientRepository.save(patient);
         caregiverRepository.save(caregiver);
-
-        return "linked";
     }
 
+    //helper method
 
     private String generatePatientCode(){
 

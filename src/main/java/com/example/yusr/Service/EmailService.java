@@ -20,23 +20,17 @@ public class EmailService {
 
 
     // Send Care Summary Email
-
-
-    public void sendSummaryEmail(String toEmail,
-                                 String patientName,
-                                 String summary) throws MessagingException {
+    public void sendSummaryEmail(String toEmail, String patientName, String summary) throws MessagingException {
 
         MimeMessage message = mailSender.createMimeMessage();
 
-        MimeMessageHelper helper =
-                new MimeMessageHelper(message, true, "UTF-8");
+        MimeMessageHelper helper = new MimeMessageHelper(message, true, "UTF-8");
 
         helper.setFrom(fromEmail);
         helper.setTo(toEmail);
         helper.setSubject("ملخص الرعاية - يسر - " + patientName);
 
-        String formattedSummary =
-                formatSummaryToHtml(summary);
+        String formattedSummary = formatSummaryToHtml(summary);
 
         String emailContent =
                 "<div dir='rtl' style='background:#F7F5F0; padding:30px; "
@@ -119,23 +113,15 @@ public class EmailService {
 
 
     // Send Patient Created Email
-
-
-    public void sendPatientCreatedEmail(String toEmail,
-                                        String caregiverName,
-                                        String patientName,
-                                        String patientCode) throws MessagingException {
+    public void sendPatientCreatedEmail(String toEmail, String caregiverName, String patientName, String patientCode) throws MessagingException {
 
         MimeMessage message = mailSender.createMimeMessage();
 
-        MimeMessageHelper helper =
-                new MimeMessageHelper(message, true, "UTF-8");
+        MimeMessageHelper helper = new MimeMessageHelper(message, true, "UTF-8");
 
         helper.setFrom(fromEmail);
         helper.setTo(toEmail);
-        helper.setSubject(
-                "تم إضافة المريض إلى يسر - " + patientName
-        );
+        helper.setSubject("تم إضافة المريض إلى يسر - " + patientName);
 
         String emailContent =
                 "<div dir='rtl' style='background:#F7F5F0; padding:30px; "
@@ -228,48 +214,33 @@ public class EmailService {
 
 
     // Add Yusr Logo
+    private void addYusrLogo(MimeMessageHelper helper) throws MessagingException {
 
-    private void addYusrLogo(MimeMessageHelper helper)
-            throws MessagingException {
+        ClassPathResource logo = new ClassPathResource("static/images/yusr-logo.png");
 
-        ClassPathResource logo =
-                new ClassPathResource(
-                        "static/images/yusr-logo.png"
-                );
-
-        helper.addInline(
-                "yusrLogo",
-                logo,
-                "image/png"
-        );
+        helper.addInline("yusrLogo", logo, "image/png");
     }
 
 
 
     // Format AI Summary
-
     private String formatSummaryToHtml(String summary) {
 
         if (summary == null || summary.isBlank()) {
             return "<p>لا يوجد محتوى للملخص.</p>";
         }
 
-        String safeText =
-                escapeHtml(summary);
+        String safeText = escapeHtml(summary);
 
-        StringBuilder html =
-                new StringBuilder();
+        StringBuilder html = new StringBuilder();
 
-        boolean listOpen =
-                false;
+        boolean listOpen = false;
 
-        String[] lines =
-                safeText.split("\\R");
+        String[] lines = safeText.split("\\R");
 
         for (String rawLine : lines) {
 
-            String line =
-                    rawLine.trim();
+            String line = rawLine.trim();
 
             if (line.isEmpty()) {
 
@@ -291,15 +262,9 @@ public class EmailService {
                     listOpen = false;
                 }
 
-                html.append(
-                        "<h4 style='color:#40584D; margin:18px 0 8px;'>"
-                );
+                html.append("<h4 style='color:#40584D; margin:18px 0 8px;'>");
 
-                html.append(
-                        formatInlineMarkdown(
-                                line.substring(4)
-                        )
-                );
+                html.append(formatInlineMarkdown(line.substring(4)));
 
                 html.append("</h4>");
 
@@ -316,15 +281,9 @@ public class EmailService {
                     listOpen = false;
                 }
 
-                html.append(
-                        "<h3 style='color:#40584D; margin:20px 0 9px;'>"
-                );
+                html.append("<h3 style='color:#40584D; margin:20px 0 9px;'>");
 
-                html.append(
-                        formatInlineMarkdown(
-                                line.substring(3)
-                        )
-                );
+                html.append(formatInlineMarkdown(line.substring(3)));
 
                 html.append("</h3>");
 
@@ -341,15 +300,9 @@ public class EmailService {
                     listOpen = false;
                 }
 
-                html.append(
-                        "<h2 style='color:#40584D; margin:22px 0 10px;'>"
-                );
+                html.append("<h2 style='color:#40584D; margin:22px 0 10px;'>");
 
-                html.append(
-                        formatInlineMarkdown(
-                                line.substring(2)
-                        )
-                );
+                html.append(formatInlineMarkdown(line.substring(2)));
 
                 html.append("</h2>");
 
@@ -359,30 +312,19 @@ public class EmailService {
 
             // List
 
-            if (
-                    line.startsWith("- ") ||
-                            line.startsWith("* ")
-            ) {
+            if (line.startsWith("- ") || line.startsWith("* "))
+            {
 
                 if (!listOpen) {
 
-                    html.append(
-                            "<ul style='padding-right:22px; "
-                                    + "margin:8px 0 15px;'>"
-                    );
+                    html.append("<ul style='padding-right:22px; " + "margin:8px 0 15px;'>");
 
                     listOpen = true;
                 }
 
-                html.append(
-                        "<li style='margin-bottom:6px;'>"
-                );
+                html.append("<li style='margin-bottom:6px;'>");
 
-                html.append(
-                        formatInlineMarkdown(
-                                line.substring(2)
-                        )
-                );
+                html.append(formatInlineMarkdown(line.substring(2)));
 
                 html.append("</li>");
 
@@ -395,13 +337,9 @@ public class EmailService {
                 listOpen = false;
             }
 
-            html.append(
-                    "<p style='margin:0 0 10px;'>"
-            );
+            html.append("<p style='margin:0 0 10px;'>");
 
-            html.append(
-                    formatInlineMarkdown(line)
-            );
+            html.append(formatInlineMarkdown(line));
 
             html.append("</p>");
         }
@@ -419,11 +357,7 @@ public class EmailService {
 
 
     private String formatInlineMarkdown(String text) {
-
-        return text.replaceAll(
-                "\\*\\*(.*?)\\*\\*",
-                "<strong style='color:#40584D;'>$1</strong>"
-        );
+        return text.replaceAll("\\*\\*(.*?)\\*\\*", "<strong style='color:#40584D;'>$1</strong>");
     }
 
 

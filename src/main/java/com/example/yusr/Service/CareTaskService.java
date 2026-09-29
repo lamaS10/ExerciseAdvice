@@ -1,6 +1,7 @@
 package com.example.yusr.Service;
 
 
+import com.example.yusr.Api.ApiException;
 import com.example.yusr.Model.CareTask;
 import com.example.yusr.Model.Caregiver;
 import com.example.yusr.Model.Patient;
@@ -25,45 +26,44 @@ public class CareTaskService {
         return careTaskRepository.findAll();
     }
 
-    public String addCareTask(CareTask careTask){
+    public void addCareTask(CareTask careTask){
 
         Patient patient = patientRepository.findPatientById(careTask.getPatientId());
 
         if (patient == null){
-            return "patient not found";
+            throw new ApiException("didn't find the patient");
         }
 
         Caregiver caregiver = caregiverRepository.findCaregiverById(careTask.getCaregiverId());
 
         if (caregiver == null){
-            return "caregiver not found";
+            throw new ApiException("didn't find the caregiver");
         }
 
         if (caregiver.getPatientId() == null ||!caregiver.getPatientId().equals(careTask.getPatientId())){
-            return "caregiver does not belong to patient";
+            throw new ApiException("caregiver does not belong to patient");
         }
 
         careTask.setStatus("pending");
         careTask.setCompletedAt(null);
 
         careTaskRepository.save(careTask);
-        return "added";
     }
 
-    public String updateCareTask(Integer id, CareTask careTask){
+    public void updateCareTask(Integer id, CareTask careTask){
 
         CareTask oldCareTask = careTaskRepository.findCareTaskById(id);
 
         if (oldCareTask == null){
-            return "care task not found";
+            throw new ApiException("didn't find the care task");
         }
 
         if (!oldCareTask.getPatientId().equals(careTask.getPatientId())){
-            return "patient id cannot be changed";
+            throw new ApiException("patient id cannot be changed");
         }
 
         if (!oldCareTask.getCaregiverId().equals(careTask.getCaregiverId())){
-            return "caregiver id cannot be changed";
+            throw new ApiException("caregiver id cannot be changed");
         }
 
         oldCareTask.setTitle(careTask.getTitle());
@@ -72,35 +72,33 @@ public class CareTaskService {
         oldCareTask.setPriority(careTask.getPriority());
 
         careTaskRepository.save(oldCareTask);
-        return "updated";
     }
 
-    public Boolean deleteCareTask(Integer id){
+    public void deleteCareTask(Integer id){
 
         CareTask careTask = careTaskRepository.findCareTaskById(id);
 
         if (careTask == null){
-            return false;
+            throw new ApiException("didn't find the care task");
         }
 
         careTaskRepository.delete(careTask);
-        return true;
     }
 
-    public String completeCareTask(Integer id, LocalDateTime completedAt){
+    public void completeCareTask(Integer id, LocalDateTime completedAt){
 
         CareTask careTask = careTaskRepository.findCareTaskById(id);
 
         if (careTask == null){
-            return "care task not found";
+            throw new ApiException("didn't find the care task");
         }
 
         if (careTask.getStatus().equals("completed")){
-            return "care task already completed";
+            throw new ApiException("care task already completed");
         }
 
         if (careTask.getStatus().equals("cancelled")){
-            return "cancelled care task cannot be completed";
+            throw new ApiException("cancelled care task cannot be completed");
         }
 
         if (completedAt == null){
@@ -108,42 +106,36 @@ public class CareTaskService {
         }
 
         if (completedAt.isAfter(LocalDateTime.now())){
-            return "completed time cannot be in the future";
+            throw new ApiException("completed time cannot be in the future");
         }
         if (careTask.getDueDateTime().isAfter(LocalDateTime.now())){
-            return "care task cannot be completed before due date";
+            throw new ApiException("care task cannot be completed before due date");
         }
 
         careTask.setStatus("completed");
         careTask.setCompletedAt(completedAt);
 
         careTaskRepository.save(careTask);
-
-        return "completed";
     }
 
-    public String cancelCareTask(Integer id){
+    public void cancelCareTask(Integer id){
 
         CareTask careTask = careTaskRepository.findCareTaskById(id);
 
         if (careTask == null){
-            return "care task not found";
+            throw new ApiException("didn't find the care task");
         }
 
         if (careTask.getStatus().equals("cancelled")){
-            return "care task already cancelled";
+            throw new ApiException("care task already cancelled");
         }
 
         if (careTask.getStatus().equals("completed")){
-            return "completed care task cannot be cancelled";
+            throw new ApiException("completed care task cannot be cancelled");
         }
-
         careTask.setStatus("cancelled");
         careTask.setCompletedAt(null);
-
         careTaskRepository.save(careTask);
-
-        return "cancelled";
     }
 
     public List<CareTask> getPatientCareTasks(Integer patientId){
@@ -151,7 +143,7 @@ public class CareTaskService {
         Patient patient = patientRepository.findPatientById(patientId);
 
         if (patient == null){
-            return null;
+            throw new ApiException("didn't find the patient");
         }
 
         return careTaskRepository.findCareTasksByPatientId(patientId);

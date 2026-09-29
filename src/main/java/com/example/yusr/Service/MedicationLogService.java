@@ -1,6 +1,7 @@
 package com.example.yusr.Service;
 
 
+import com.example.yusr.Api.ApiException;
 import com.example.yusr.Model.*;
 import com.example.yusr.Repository.*;
 import lombok.RequiredArgsConstructor;
@@ -24,24 +25,24 @@ public class MedicationLogService {
         return medicationLogRepository.findAll();
     }
 
-    public String addMedicationLog(MedicationLog medicationLog){
+    public void addMedicationLog(MedicationLog medicationLog){
 
         MedicationSchedule medicationSchedule = medicationScheduleRepository.findMedicationScheduleById(medicationLog.getScheduleId());
 
         if (medicationSchedule == null){
-            return "medication schedule not found";
+            throw new ApiException("didn't find medication schedule");
         }
 
         Boolean checkLog = medicationLogRepository.existsMedicationLogByScheduleIdAndScheduledDateTime(medicationLog.getScheduleId(), medicationLog.getScheduledDateTime());
 
         if (checkLog){
-            return "medication log already exists";
+            throw new ApiException("medication log already exists");
         }
 
         Medication medication = medicationRepository.findMedicationById(medicationSchedule.getMedicationId());
 
         if (medication == null){
-            return "medication not found";
+            throw new ApiException("didn't find medication");
         }
 
         medicationLog.setRecordedAt(LocalDateTime.now());
@@ -52,7 +53,7 @@ public class MedicationLogService {
 
         if (medicationLog.getStatus().equals("taken") ||medicationLog.getStatus().equals("late")){
             if (medication.getStockQuantity() <= 0){
-                return "medication is out of stock";
+                throw new ApiException("medication is out of stock");
             }
 
             if (medicationLog.getTakenAt() == null){
@@ -65,24 +66,24 @@ public class MedicationLogService {
         }
 
         medicationLogRepository.save(medicationLog);
-        return "added";
     }
 
-    public String updateMedicationLog(Integer id, MedicationLog medicationLog){
+
+    public void updateMedicationLog(Integer id, MedicationLog medicationLog){
         Boolean stockDecreased = false;
 
         MedicationLog oldMedicationLog = medicationLogRepository.findMedicationLogById(id);
 
         if (oldMedicationLog == null){
-            return "medication log not found";
+            throw new ApiException("didn't find medication log");
         }
 
         if (!oldMedicationLog.getScheduleId().equals(medicationLog.getScheduleId())){
-            return "schedule id cannot be changed";
+            throw new ApiException("schedule id cannot be changed");
         }
 
         if (!oldMedicationLog.getScheduledDateTime().equals(medicationLog.getScheduledDateTime())){
-            return "scheduled date time cannot be changed";
+            throw new ApiException("scheduled date time cannot be changed");
         }
 
         MedicationSchedule medicationSchedule = medicationScheduleRepository.findMedicationScheduleById(oldMedicationLog.getScheduleId());
@@ -92,7 +93,7 @@ public class MedicationLogService {
         if (oldMedicationLog.getStatus().equals("missed") && !medicationLog.getStatus().equals("missed")){
 
             if (medication.getStockQuantity() <= 0){
-                return "medication is out of stock";
+                throw new ApiException("medication is out of stock");
             }
 
             medication.setStockQuantity(medication.getStockQuantity() - 1);
@@ -116,16 +117,14 @@ public class MedicationLogService {
         if (stockDecreased){
             checkLowStock(medication);
         }
-
-        return "updated";
     }
 
-    public Boolean deleteMedicationLog(Integer id){
+    public void deleteMedicationLog(Integer id){
 
         MedicationLog medicationLog =medicationLogRepository.findMedicationLogById(id);
 
         if (medicationLog == null){
-            return false;
+            throw new ApiException("didn't find the medication log");
         }
 
         if (!medicationLog.getStatus().equals("missed")){
@@ -134,9 +133,8 @@ public class MedicationLogService {
             medication.setStockQuantity(medication.getStockQuantity() + 1);
             medicationRepository.save(medication);
         }
-
         medicationLogRepository.delete(medicationLog);
-        return true;
+
     }
 
 
@@ -145,7 +143,7 @@ public class MedicationLogService {
         Patient patient = patientRepository.findPatientById(patientId);
 
         if (patient == null){
-            return "patient not found";
+            throw new ApiException("didn't find the patient");
         }
 
         LocalDate today = LocalDate.now();
@@ -174,8 +172,7 @@ public class MedicationLogService {
         Integer missedDoses = recordedDoses - completedDoses;
         Integer remainingDoses = totalDoses - recordedDoses;
 
-        return "total doses: " + totalDoses + ", completed doses: " + completedDoses +
-                ", missed doses: " + missedDoses + ", remaining doses: " + remainingDoses;
+        return "total doses: " + totalDoses + ", completed doses: " + completedDoses + ", missed doses: " + missedDoses + ", remaining doses: " + remainingDoses;
     }
 
 
@@ -184,7 +181,7 @@ public class MedicationLogService {
         Patient patient = patientRepository.findPatientById(patientId);
 
         if (patient == null){
-            return null;
+            throw new ApiException("didn't find the patient");
         }
 
         LocalDate today = LocalDate.now();
@@ -194,22 +191,19 @@ public class MedicationLogService {
 
         return medicationLogRepository.getTodayMedicationLogs(patientId, startOfDay, startOfNextDay);
     }
+
+    //helper method
     private void checkLowStock(Medication medication){
 
         if (medication.getStockQuantity() <= medication.getLowStockLimit()){
 
-            Patient patient =
-                    patientRepository.findPatientById(medication.getPatientId());
+            Patient patient = patientRepository.findPatientById(medication.getPatientId());
 
-            List<Caregiver> caregivers =
-                    caregiverRepository.findCaregiversByPatientId(
-                            medication.getPatientId()
-                    );
+            List<Caregiver> caregivers = caregiverRepository.findCaregiversByPatientId(medication.getPatientId());
 
             for (Caregiver caregiver : caregivers){
 
-                String internationalPhone =
-                        "+966" + caregiver.getPhoneNumber().substring(1);
+                String internationalPhone = "+966" + caregiver.getPhoneNumber().substring(1);
 
                 whatsAppService.sendMessage(
                         internationalPhone,

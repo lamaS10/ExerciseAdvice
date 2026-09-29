@@ -1,4 +1,4 @@
-package com.example.yusr.ApiResponse;
+package com.example.yusr.Api;
 
 
 import lombok.AllArgsConstructor;

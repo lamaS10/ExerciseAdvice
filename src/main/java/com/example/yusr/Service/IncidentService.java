@@ -1,6 +1,7 @@
 package com.example.yusr.Service;
 
 
+import com.example.yusr.Api.ApiException;
 import com.example.yusr.Model.Caregiver;
 import com.example.yusr.Model.Incident;
 import com.example.yusr.Model.Patient;
@@ -27,12 +28,12 @@ public class IncidentService {
     }
 
 
-    public Boolean addIncident(Incident incident){
+    public void addIncident(Incident incident){
 
         Patient patient = patientRepository.findPatientById(incident.getPatientId());
 
         if (patient == null){
-            return false;
+            throw new ApiException("didn't find the patient");
         }
 
         if (incident.getIncidentAt() == null){
@@ -48,20 +49,18 @@ public class IncidentService {
         if (incident.getSeverity().equals("high") || incident.getSeverity().equals("critical")){
             sendIncidentAlert(incident);
         }
-
-        return true;
     }
 
-    public String updateIncident(Integer id, Incident incident){
+    public void updateIncident(Integer id, Incident incident){
 
         Incident oldIncident = incidentRepository.findIncidentById(id);
 
         if (oldIncident == null){
-            return "incident not found";
+            throw new ApiException("didn't find the incident");
         }
 
         if (!oldIncident.getPatientId().equals(incident.getPatientId())){
-            return "patient id cannot be changed";
+            throw new ApiException("patient id cannot be changed");
         }
 
         String oldSeverity = oldIncident.getSeverity();
@@ -77,55 +76,52 @@ public class IncidentService {
                 && (incident.getSeverity().equals("high") || incident.getSeverity().equals("critical"))){
             sendIncidentAlert(oldIncident);
         }
-
-        return "updated";
     }
 
-    public Boolean deleteIncident(Integer id){
+    public void deleteIncident(Integer id){
 
         Incident incident = incidentRepository.findIncidentById(id);
 
         if (incident == null){
-            return false;
+            throw new ApiException("didn't find the incident");
         }
 
         incidentRepository.delete(incident);
-        return true;
     }
 
-    public String startMonitoringIncident(Integer id){
+    public void startMonitoringIncident(Integer id){
 
         Incident incident = incidentRepository.findIncidentById(id);
 
         if (incident == null){
-            return "incident not found";
+            throw new ApiException("didn't find the incident");
         }
 
         if (incident.getStatus().equals("monitoring")){
-            return "incident already under monitoring";
+            throw new ApiException("incident already under monitoring");
         }
 
         if (incident.getStatus().equals("resolved")){
-            return "resolved incident cannot be monitored";
+            throw new ApiException("resolved incident cannot be monitored");
         }
 
         incident.setStatus("monitoring");
 
         incidentRepository.save(incident);
 
-        return "monitoring";
     }
 
-    public String resolveIncident(Integer id, LocalDateTime resolvedAt){
+    public void resolveIncident(Integer id, LocalDateTime resolvedAt){
 
         Incident incident = incidentRepository.findIncidentById(id);
 
         if (incident == null){
-            return "incident not found";
+            throw new ApiException("didn't find the incident");
+
         }
 
         if (incident.getStatus().equals("resolved")){
-            return "incident already resolved";
+            throw new ApiException("incident already resolved");
         }
 
         if (resolvedAt == null){
@@ -133,11 +129,11 @@ public class IncidentService {
         }
 
         if (resolvedAt.isAfter(LocalDateTime.now())){
-            return "resolved time cannot be in the future";
+            throw new ApiException("resolved time cannot be in the future");
         }
 
         if (resolvedAt.isBefore(incident.getIncidentAt())){
-            return "resolved time cannot be before incident time";
+            throw new ApiException("resolved time cannot be before incident time");
         }
 
         incident.setStatus("resolved");
@@ -148,21 +144,18 @@ public class IncidentService {
         if (incident.getSeverity().equals("high") || incident.getSeverity().equals("critical")){
             sendResolvedIncidentAlert(incident);
         }
-
-        return "resolved";
     }
 
     public List<Incident> getPatientIncidents(Integer patientId){
 
         Patient patient = patientRepository.findPatientById(patientId);
-
         if (patient == null){
-            return null;
+            throw new ApiException("didn't find the patient");
         }
-
         return incidentRepository.findIncidentsByPatientId(patientId);
     }
 
+    //helper methods
     private String translateIncidentType(String incidentType){
 
         return switch (incidentType){

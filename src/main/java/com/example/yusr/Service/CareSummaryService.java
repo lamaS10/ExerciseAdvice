@@ -1,5 +1,6 @@
 package com.example.yusr.Service;
 
+import com.example.yusr.Api.ApiException;
 import com.example.yusr.Model.*;
 import com.example.yusr.Repository.*;
 import lombok.RequiredArgsConstructor;
@@ -31,42 +32,119 @@ public class CareSummaryService {
         Caregiver caregiver = caregiverRepository.findCaregiverById(caregiverId);
 
         if (caregiver == null || caregiver.getPatientId() == null) {
-            return null;
+           throw new ApiException("didn't find the caregiver or patient");
+        }
+        CareSummary careSummary=careSummaryRepository.findCareSummaryByPatientId(caregiver.getPatientId());
+        if (careSummary == null) {
+            throw new ApiException("didn't find care summary");
+
         }
 
-        return careSummaryRepository.findCareSummaryByPatientId(caregiver.getPatientId());
+        return careSummary;
     }
 
 
-    public String generateOnDemandSummary(Integer caregiverId, LocalDate fromDate, LocalDate toDate) {
+    public void generateOnDemandSummary(Integer caregiverId, LocalDate fromDate, LocalDate toDate) {
 
         Caregiver caregiver = caregiverRepository.findCaregiverById(caregiverId);
 
         if (caregiver == null) {
-            return "caregiver not found";
+            throw new ApiException("didn't find the caregiver");
         }
 
         if (caregiver.getPatientId() == null) {
-            return "caregiver is not assigned to a patient";
+            throw new ApiException("caregiver is not assigned to a patient");
         }
 
         if (fromDate == null || toDate == null) {
-            return "from date and to date cannot be null";
+            throw new ApiException("from date and to date cannot be null");
         }
 
         if (fromDate.isAfter(toDate)) {
-            return "from date cannot be after to date";
+            throw new ApiException("from date cannot be after to date");
         }
 
         if (toDate.isAfter(LocalDate.now())) {
-            return "to date cannot be in the future";
+            throw new ApiException("to date cannot be in the future");
         }
 
         Patient patient = patientRepository.findPatientById(caregiver.getPatientId());
 
         if (patient == null) {
-            return "patient not found";
+            throw new ApiException("didn't find the patient");
         }
+
+        LocalDateTime startDateTime = fromDate.atStartOfDay();
+        LocalDateTime endDateTime = toDate.plusDays(1).atStartOfDay();
+
+
+        List<ChronicCondition> chronicConditions = chronicConditionRepository.findChronicConditionsByPatientId(patient.getId());
+
+        List<Medication> medications = medicationRepository.findMedicationsByPatientId(patient.getId());
+
+        List<MedicationLog> medicationLogs = medicationLogRepository.getMedicationLogsByPatientAndPeriod(patient.getId(), startDateTime, endDateTime);
+
+        List<HealthReading> healthReadings = healthReadingRepository.findHealthReadingsByPatientIdAndMeasuredAtBetween(patient.getId(), startDateTime, endDateTime);
+
+        List<CareTask> careTasks = careTaskRepository.findCareTasksByPatientIdAndDueDateTimeBetween(patient.getId(), startDateTime, endDateTime);
+
+        List<Incident> incidents = incidentRepository.findIncidentsByPatientIdAndIncidentAtBetween(patient.getId(), startDateTime, endDateTime);
+
+
+        String patientData = buildPatientData(patient, fromDate, toDate, chronicConditions, medications, medicationLogs, healthReadings, careTasks, incidents);
+
+        String generatedSummary;
+
+        try {
+            generatedSummary = aiService.generateSummary(patientData);
+        } catch (Exception e) {
+            throw new ApiException("AI service is temporarily unavailable");
+        }
+
+        saveLatestSummary(patient.getId(), generatedSummary, fromDate, toDate, "on_demand");
+        try {
+            emailService.sendSummaryEmail(
+                    caregiver.getEmail(),
+                    patient.getFullName(),
+                    generatedSummary
+            );
+        } catch (Exception e) {
+            System.out.println("Failed to send summary email: " + e.getMessage());
+        }
+    }
+
+
+
+    public void generateAutomaticSummary(Integer caregiverId, String frequency) {
+
+        Caregiver caregiver = caregiverRepository.findCaregiverById(caregiverId);
+
+        if (caregiver == null) {
+            throw new ApiException("didn't find caregiver");
+        }
+
+        if (caregiver.getPatientId() == null) {
+            throw new ApiException("caregiver is not assigned to a patient");
+        }
+
+        Patient patient = patientRepository.findPatientById(caregiver.getPatientId());
+
+        if (patient == null) {
+            throw new ApiException("patient not found");
+        }
+
+
+        LocalDate toDate = LocalDate.now();
+        LocalDate fromDate;
+
+        if (frequency.equals("daily")) {
+            fromDate = toDate;
+        } else if (frequency.equals("weekly")) {
+            fromDate = toDate.minusDays(6);
+        } else {
+            fromDate = toDate.minusMonths(1).plusDays(1);
+        }
+
 
         LocalDateTime startDateTime = fromDate.atStartOfDay();
         LocalDateTime endDateTime = toDate.plusDays(1).atStartOfDay();
@@ -94,10 +172,10 @@ public class CareSummaryService {
         try {
             generatedSummary = aiService.generateSummary(patientData);
         } catch (Exception e) {
-            return "AI service is temporarily unavailable";
+            throw new ApiException("AI service is temporarily unavailable");
         }
 
-        saveLatestSummary(patient.getId(), generatedSummary, fromDate, toDate, "on_demand");
+        saveLatestSummary(patient.getId(), generatedSummary, fromDate, toDate, "automatic");
         try {
             emailService.sendSummaryEmail(
                     caregiver.getEmail(),
@@ -105,11 +183,66 @@ public class CareSummaryService {
                     generatedSummary
             );
         } catch (Exception e) {
-            return "summary generated but email could not be sent";
+            System.out.println("Failed to send summary email: " + e.getMessage());
         }
 
-        return "summary generated successfully";
     }
+
+    public void sendLatestSummaryEmail(Integer caregiverId) {
+
+        Caregiver caregiver = caregiverRepository.findCaregiverById(caregiverId);
+
+        if (caregiver == null) {
+            throw new ApiException("didn't find caregiver");
+        }
+
+        if (caregiver.getPatientId() == null) {
+            throw new ApiException("caregiver is not assigned to a patient");
+        }
+
+        Patient patient = patientRepository.findPatientById(caregiver.getPatientId());
+
+        if (patient == null) {
+            throw new ApiException("didn't find patient");
+        }
+
+        CareSummary careSummary = careSummaryRepository.findCareSummaryByPatientId(patient.getId());
+
+        if (careSummary == null) {
+            throw new ApiException("didn't find care summary");
+        }
+
+        try {
+            emailService.sendSummaryEmail(
+                    caregiver.getEmail(),
+                    patient.getFullName(),
+                    careSummary.getSummary()
+            );
+        } catch (Exception e) {
+            throw new ApiException("email could not be sent");
+        }
+    }
+
+
+    //helper method
+    private void saveLatestSummary(Integer patientId, String generatedSummary, LocalDate fromDate, LocalDate toDate, String generationType) {
+
+        CareSummary careSummary = careSummaryRepository.findCareSummaryByPatientId(patientId);
+
+        if (careSummary == null) {
+            careSummary = new CareSummary();
+            careSummary.setPatientId(patientId);
+        }
+
+        careSummary.setSummary(generatedSummary);
+        careSummary.setFromDate(fromDate);
+        careSummary.setToDate(toDate);
+        careSummary.setGeneratedAt(LocalDateTime.now());
+        careSummary.setGenerationType(generationType);
+
+        careSummaryRepository.save(careSummary);
+    }
+
 
 
     private String buildPatientData(Patient patient, LocalDate fromDate, LocalDate toDate,
@@ -270,137 +403,5 @@ public class CareSummaryService {
         }
 
         return data.toString();
-    }
-
-
-    private void saveLatestSummary(Integer patientId, String generatedSummary, LocalDate fromDate, LocalDate toDate, String generationType) {
-
-        CareSummary careSummary = careSummaryRepository.findCareSummaryByPatientId(patientId);
-
-        if (careSummary == null) {
-            careSummary = new CareSummary();
-            careSummary.setPatientId(patientId);
-        }
-
-        careSummary.setSummary(generatedSummary);
-        careSummary.setFromDate(fromDate);
-        careSummary.setToDate(toDate);
-        careSummary.setGeneratedAt(LocalDateTime.now());
-        careSummary.setGenerationType(generationType);
-
-        careSummaryRepository.save(careSummary);
-    }
-
-    public String generateAutomaticSummary(Integer caregiverId, String frequency) {
-
-        Caregiver caregiver = caregiverRepository.findCaregiverById(caregiverId);
-
-        if (caregiver == null) {
-            return "caregiver not found";
-        }
-
-        if (caregiver.getPatientId() == null) {
-            return "caregiver is not assigned to a patient";
-        }
-
-        Patient patient =
-                patientRepository.findPatientById(caregiver.getPatientId());
-
-        if (patient == null) {
-            return "patient not found";
-        }
-
-
-        LocalDate toDate = LocalDate.now();
-        LocalDate fromDate;
-
-        if (frequency.equals("daily")) {
-            fromDate = toDate;
-        } else if (frequency.equals("weekly")) {
-            fromDate = toDate.minusDays(6);
-        } else {
-            fromDate = toDate.minusMonths(1).plusDays(1);
-        }
-
-
-        LocalDateTime startDateTime = fromDate.atStartOfDay();
-        LocalDateTime endDateTime = toDate.plusDays(1).atStartOfDay();
-
-
-        List<ChronicCondition> chronicConditions = chronicConditionRepository.findChronicConditionsByPatientId(patient.getId());
-
-        List<Medication> medications = medicationRepository.findMedicationsByPatientId(patient.getId());
-
-        List<MedicationLog> medicationLogs = medicationLogRepository.getMedicationLogsByPatientAndPeriod(patient.getId(), startDateTime, endDateTime);
-
-        List<HealthReading> healthReadings = healthReadingRepository.findHealthReadingsByPatientIdAndMeasuredAtBetween(patient.getId(), startDateTime, endDateTime);
-
-        List<CareTask> careTasks = careTaskRepository.findCareTasksByPatientIdAndDueDateTimeBetween(patient.getId(), startDateTime, endDateTime);
-
-        List<Incident> incidents = incidentRepository.findIncidentsByPatientIdAndIncidentAtBetween(patient.getId(), startDateTime, endDateTime);
-
-
-        String patientData = buildPatientData(patient, fromDate, toDate, chronicConditions, medications, medicationLogs, healthReadings, careTasks, incidents);
-
-
-
-        String generatedSummary;
-
-        try {
-            generatedSummary = aiService.generateSummary(patientData);
-        } catch (Exception e) {
-            return "AI service is temporarily unavailable";
-        }
-
-        saveLatestSummary(patient.getId(), generatedSummary, fromDate, toDate, "automatic");
-        try {
-            emailService.sendSummaryEmail(
-                    caregiver.getEmail(),
-                    patient.getFullName(),
-                    generatedSummary
-            );
-        } catch (Exception e) {
-            return "automatic summary generated but email could not be sent";
-        }
-
-        return "automatic summary generated successfully";
-    }
-
-    public String sendLatestSummaryEmail(Integer caregiverId) {
-
-        Caregiver caregiver = caregiverRepository.findCaregiverById(caregiverId);
-
-        if (caregiver == null) {
-            return "caregiver not found";
-        }
-
-        if (caregiver.getPatientId() == null) {
-            return "caregiver is not assigned to a patient";
-        }
-
-        Patient patient = patientRepository.findPatientById(caregiver.getPatientId());
-
-        if (patient == null) {
-            return "patient not found";
-        }
-
-        CareSummary careSummary =
-                careSummaryRepository.findCareSummaryByPatientId(patient.getId());
-
-        if (careSummary == null) {
-            return "care summary not found";
-        }
-
-        try {
-            emailService.sendSummaryEmail(
-                    caregiver.getEmail(),
-                    patient.getFullName(),
-                    careSummary.getSummary()
-            );
-        } catch (Exception e) {
-            return "email could not be sent";
-        }
-
-        return "summary sent successfully";
     }
 }

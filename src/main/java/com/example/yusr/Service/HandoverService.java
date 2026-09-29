@@ -1,5 +1,6 @@
 package com.example.yusr.Service;
 
+import com.example.yusr.Api.ApiException;
 import com.example.yusr.Model.CareTask;
 import com.example.yusr.Model.Handover;
 import com.example.yusr.Model.Caregiver;
@@ -32,44 +33,43 @@ public class HandoverService {
         return handoverRepository.findAll();
     }
 
-    public String addHandover(Handover handover){
+    public void addHandover(Handover handover){
 
         Patient patient = patientRepository.findPatientById(handover.getPatientId());
 
         if (patient == null){
-            return "patient not found";
+            throw new ApiException("didn't find the patient");
         }
 
         Caregiver fromCaregiver = caregiverRepository.findCaregiverById(handover.getFromCaregiverId());
         Caregiver toCaregiver = caregiverRepository.findCaregiverById(handover.getToCaregiverId());
 
         if (fromCaregiver == null || toCaregiver == null){
-            return "caregiver not found";
+            throw new ApiException("didn't find the caregiver");
         }
 
         if (fromCaregiver.getId().equals(toCaregiver.getId())){
-            return "cannot handover to yourself";
+            throw new ApiException("cannot handover to yourself");
         }
 
-        if (fromCaregiver.getPatientId() == null ||toCaregiver.getPatientId() == null ||
-                !fromCaregiver.getPatientId().equals(handover.getPatientId()) ||!toCaregiver.getPatientId().equals(handover.getPatientId())){
-            return "caregivers do not belong to patient";
+        if (fromCaregiver.getPatientId() == null ||toCaregiver.getPatientId() == null || !fromCaregiver.getPatientId().equals(handover.getPatientId()) ||!toCaregiver.getPatientId().equals(handover.getPatientId())){
+            throw new ApiException("caregivers do not belong to patient");
         }
 
         if (!fromCaregiver.getIsCurrentCaregiver()){
-            return "sender is not current caregiver";
+            throw new ApiException("sender is not current caregiver");
         }
 
         if (!fromCaregiver.getStatus().equals("active") || !toCaregiver.getStatus().equals("active")){
-            return "caregiver is inactive";
+            throw new ApiException("caregiver is inactive");
         }
 
         if (handoverRepository.existsHandoverByPatientIdAndStatus(handover.getPatientId(), "pending")){
-            return "patient already has pending handover";
+            throw new ApiException("patient already has pending handover");
         }
 
         if (!handover.getExpectedAcceptanceAt().isAfter(LocalDateTime.now())){
-            return "expected acceptance must be in the future";
+            throw new ApiException("expected acceptance must be in the future");
         }
 
         handover.setCreatedAt(LocalDateTime.now());
@@ -81,76 +81,74 @@ public class HandoverService {
         handoverRepository.save(handover);
         String internationalPhone = "+966" + toCaregiver.getPhoneNumber().substring(1);
 
-        whatsAppService.sendMessage(
-                internationalPhone,
+        whatsAppService.sendMessage(internationalPhone,
                 "طلب استلام رعاية جديد من يسر 🌿\n\n" +
                         "تم إرسال طلب لك لاستلام مسؤولية رعاية المريض " +
                         patient.getFullName() + ".\n\n" +
                         "يمكنك الدخول إلى يسر للاطلاع على تفاصيل التسليم وقبول الطلب أو رفضه.");
-        return "added";
     }
 
 
-    public String updateHandover(Integer id, Handover handover){
+    public void updateHandover(Integer id, Handover handover){
 
         Handover oldHandover = handoverRepository.findHandoverById(id);
 
         if (oldHandover == null){
-            return "handover not found";
+            throw new ApiException("didn't find the handover");
         }
 
         if (!oldHandover.getStatus().equals("pending")){
-            return "only pending handover can be updated";
+            throw new ApiException("only pending handover can be updated");
+
         }
 
         if (!oldHandover.getPatientId().equals(handover.getPatientId()) ||!oldHandover.getFromCaregiverId().equals(handover.getFromCaregiverId()) || !oldHandover.getToCaregiverId().equals(handover.getToCaregiverId())){
-            return "handover relationships cannot be changed";
+            throw new ApiException("handover relationships cannot be changed");
         }
 
         if (!handover.getExpectedAcceptanceAt().isAfter(LocalDateTime.now())){
-            return "expected acceptance must be in the future";
+            throw new ApiException("expected acceptance must be in the future\"");
         }
 
         oldHandover.setSummary(handover.getSummary());
         oldHandover.setExpectedAcceptanceAt(handover.getExpectedAcceptanceAt());
         oldHandover.setOverdueAlertSent(false);
         handoverRepository.save(oldHandover);
-        return "updated";
     }
 
 
 
-    public String deleteHandover(Integer id){
+    public void deleteHandover(Integer id){
 
         Handover handover = handoverRepository.findHandoverById(id);
 
         if (handover == null){
-            return "handover not found";
+            throw new ApiException("didn't find the handover");
         }
 
         if (handover.getStatus().equals("accepted")){
-            return "accepted handover cannot be deleted";
+            throw new ApiException("accepted handover cannot be deleted");
         }
 
         handoverRepository.delete(handover);
-        return "deleted";
+
     }
 
     @Transactional
-    public String acceptHandover(Integer handoverId, Integer caregiverId){
+    public void acceptHandover(Integer handoverId, Integer caregiverId){
 
         Handover handover = handoverRepository.findHandoverById(handoverId);
 
         if (handover == null){
-            return "handover not found";
+            throw new ApiException("didn't find the handover");
         }
 
         if (!handover.getStatus().equals("pending")){
-            return "handover is not pending";
+            throw new ApiException("handover is not pending");
         }
 
         if (!handover.getToCaregiverId().equals(caregiverId)){
-            return "only receiving caregiver can accept handover";
+            throw new ApiException("only receiving caregiver can accept handover");
         }
 
         Caregiver fromCaregiver = caregiverRepository.findCaregiverById(handover.getFromCaregiverId());
@@ -158,22 +156,21 @@ public class HandoverService {
         Caregiver toCaregiver = caregiverRepository.findCaregiverById(handover.getToCaregiverId());
 
         if (fromCaregiver == null || toCaregiver == null){
-            return "caregiver not found";
+            throw new ApiException("didn't find the caregiver");
         }
 
         if (fromCaregiver.getPatientId() == null || toCaregiver.getPatientId() == null
                 || !fromCaregiver.getPatientId().equals(handover.getPatientId())
                 || !toCaregiver.getPatientId().equals(handover.getPatientId())){
-
-            return "caregivers do not belong to patient";
+            throw new ApiException("caregivers do not belong to patient");
         }
 
         if (!fromCaregiver.getIsCurrentCaregiver()){
-            return "sender is no longer current caregiver";
+            throw new ApiException("sender is no longer current caregiver");
         }
 
         if (!fromCaregiver.getStatus().equals("active") || !toCaregiver.getStatus().equals("active")){
-            return "caregiver is inactive";
+            throw new ApiException("caregiver is inactive");
         }
 
         fromCaregiver.setIsCurrentCaregiver(false);
@@ -195,31 +192,28 @@ public class HandoverService {
         handoverRepository.save(handover);
         String internationalPhone = "+966" + fromCaregiver.getPhoneNumber().substring(1);
 
-        whatsAppService.sendMessage(
-                internationalPhone,
+        whatsAppService.sendMessage(internationalPhone,
                 "تم استلام الرعاية بنجاح 🤍\n\n" +
                         "وافق " + toCaregiver.getFullName() +
                         " على طلب تسليم الرعاية.\n\n" +
-                        "تم نقل مسؤولية الرعاية والمهام المعلقة إليه بنجاح في يسر."
-        );
-        return "accepted";
+                        "تم نقل مسؤولية الرعاية والمهام المعلقة إليه بنجاح في يسر.");
     }
 
 
-    public String rejectHandover(Integer handoverId, Integer caregiverId){
+    public void rejectHandover(Integer handoverId, Integer caregiverId){
 
         Handover handover = handoverRepository.findHandoverById(handoverId);
 
         if (handover == null){
-            return "handover not found";
+            throw new ApiException("didn't find the handover");
         }
 
         if (!handover.getStatus().equals("pending")){
-            return "handover is not pending";
+            throw new ApiException("handover is not pending");
         }
 
         if (!handover.getToCaregiverId().equals(caregiverId)){
-            return "only receiving caregiver can reject handover";
+            throw new ApiException("only receiving caregiver can reject handover");
         }
 
         Caregiver fromCaregiver = caregiverRepository.findCaregiverById(handover.getFromCaregiverId());
@@ -227,17 +221,16 @@ public class HandoverService {
         Caregiver toCaregiver = caregiverRepository.findCaregiverById(handover.getToCaregiverId());
 
         if (fromCaregiver == null || toCaregiver == null){
-            return "caregiver not found";
+            throw new ApiException("didn't find the caregiver");
         }
 
         if (fromCaregiver.getPatientId() == null || toCaregiver.getPatientId() == null
-                || !fromCaregiver.getPatientId().equals(handover.getPatientId())
-                || !toCaregiver.getPatientId().equals(handover.getPatientId())){
+                || !fromCaregiver.getPatientId().equals(handover.getPatientId()) || !toCaregiver.getPatientId().equals(handover.getPatientId())){
+            throw new ApiException("caregivers do not belong to patient");
 
-            return "caregivers do not belong to patient";
         }
         if (!fromCaregiver.getStatus().equals("active") || !toCaregiver.getStatus().equals("active")){
-            return "caregiver is inactive";
+            throw new ApiException("caregiver is inactive");
         }
 
         handover.setStatus("rejected");
@@ -253,9 +246,7 @@ public class HandoverService {
                 "تحديث من يسر 🌿\n\n" +
                         "لم يتم قبول طلب تسليم الرعاية المرسل إلى " +
                         toCaregiver.getFullName() + ".\n\n" +
-                        "يمكنك الدخول إلى يسر لمراجعة التفاصيل واختيار الإجراء المناسب."
-        );
-        return "rejected";
+                        "يمكنك الدخول إلى يسر لمراجعة التفاصيل واختيار الإجراء المناسب.");
     }
 
     public Handover getPendingHandover(Integer caregiverId){
@@ -263,7 +254,7 @@ public class HandoverService {
         Caregiver caregiver = caregiverRepository.findCaregiverById(caregiverId);
 
         if (caregiver == null){
-            return null;
+            throw new ApiException("didn't find the caregiver");
         }
 
         return handoverRepository.findHandoverByToCaregiverIdAndStatus(caregiverId, "pending");
@@ -275,7 +266,7 @@ public class HandoverService {
         Caregiver caregiver = caregiverRepository.findCaregiverById(caregiverId);
 
         if (caregiver == null){
-            return null;
+            throw new ApiException("didn't find the caregiver");
         }
 
         return handoverRepository.findHandoversByFromCaregiverIdOrderByCreatedAtDesc(caregiverId);

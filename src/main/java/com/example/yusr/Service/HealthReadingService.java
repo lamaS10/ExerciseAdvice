@@ -1,6 +1,7 @@
 package com.example.yusr.Service;
 
 
+import com.example.yusr.Api.ApiException;
 import com.example.yusr.Model.HealthReading;
 import com.example.yusr.Model.Patient;
 import com.example.yusr.Repository.HealthReadingRepository;
@@ -24,22 +25,22 @@ public class HealthReadingService {
     }
 
 
-    public String addHealthReading(HealthReading healthReading){
+    public void addHealthReading(HealthReading healthReading){
 
         Patient patient = patientRepository.findPatientById(healthReading.getPatientId());
 
         if (patient == null){
-            return "patient not found";
+            throw new ApiException("didn't find the patient");
         }
 
         if (healthReading.getReadingType().equals("blood_pressure")){
 
             if (healthReading.getSystolicValue() == null || healthReading.getDiastolicValue() == null){
-                return "blood pressure requires systolic and diastolic values";
+                throw new ApiException("blood pressure requires systolic and diastolic values");
             }
 
             if (healthReading.getReadingValue() != null){
-                return "reading value must be empty for blood pressure";
+                throw new ApiException("reading value must be empty for blood pressure");
             }
 
             healthReading.setGlucoseMeasurementType(null);
@@ -49,17 +50,17 @@ public class HealthReadingService {
         if (!healthReading.getReadingType().equals("blood_pressure")){
 
             if (healthReading.getReadingValue() == null){
-                return "reading value is required";
+                throw new ApiException("reading value is required");
             }
 
             if (healthReading.getSystolicValue() != null || healthReading.getDiastolicValue() != null){
-                return "systolic and diastolic values must be empty";
+                throw new ApiException("systolic and diastolic values must be empty");
             }
 
             if (healthReading.getReadingType().equals("glucose")){
 
                 if (healthReading.getGlucoseMeasurementType() == null){
-                    return "glucose measurement type is required";
+                    throw new ApiException("glucose measurement type is required");
                 }
 
                 healthReading.setUnit("mg/dL");
@@ -90,29 +91,28 @@ public class HealthReadingService {
 
         healthReadingRepository.save(healthReading);
 
-        return "added";
     }
 
-    public String updateHealthReading(Integer id, HealthReading healthReading){
+    public void updateHealthReading(Integer id, HealthReading healthReading){
 
         HealthReading oldHealthReading = healthReadingRepository.findHealthReadingById(id);
 
         if (oldHealthReading == null){
-            return "health reading not found";
+            throw new ApiException("didn't find the health reading");
         }
 
         if (!oldHealthReading.getPatientId().equals(healthReading.getPatientId())){
-            return "patient id cannot be changed";
+            throw new ApiException("patient id cannot be changed");
         }
 
         if (healthReading.getReadingType().equals("blood_pressure")){
 
             if (healthReading.getSystolicValue() == null || healthReading.getDiastolicValue() == null){
-                return "blood pressure requires systolic and diastolic values";
+                throw new ApiException("blood pressure requires systolic and diastolic values");
             }
 
             if (healthReading.getReadingValue() != null){
-                return "reading value must be empty for blood pressure";
+                throw new ApiException("reading value must be empty for blood pressure");
             }
 
             oldHealthReading.setUnit("mmHg");
@@ -122,17 +122,17 @@ public class HealthReadingService {
         if (!healthReading.getReadingType().equals("blood_pressure")){
 
             if (healthReading.getReadingValue() == null){
-                return "reading value is required";
+                throw new ApiException("reading value is required");
             }
 
             if (healthReading.getSystolicValue() != null || healthReading.getDiastolicValue() != null){
-                return "systolic and diastolic values must be empty";
+                throw new ApiException("systolic and diastolic values must be empty");
             }
 
             if (healthReading.getReadingType().equals("glucose")){
 
                 if (healthReading.getGlucoseMeasurementType() == null){
-                    return "glucose measurement type is required";
+                    throw new ApiException("glucose measurement type is required");
                 }
 
                 oldHealthReading.setUnit("mg/dL");
@@ -169,20 +169,17 @@ public class HealthReadingService {
         oldHealthReading.setReadingStatus(classifyReading(oldHealthReading));
 
         healthReadingRepository.save(oldHealthReading);
-
-        return "updated";
     }
 
-    public Boolean deleteHealthReading(Integer id){
+    public void deleteHealthReading(Integer id){
 
         HealthReading healthReading = healthReadingRepository.findHealthReadingById(id);
 
         if (healthReading == null){
-            return false;
+            throw new ApiException("didn't find the health reading");
         }
 
         healthReadingRepository.delete(healthReading);
-        return true;
     }
 
     public List<HealthReading> getPatientHealthReadings(Integer patientId){
@@ -190,7 +187,7 @@ public class HealthReadingService {
         Patient patient = patientRepository.findPatientById(patientId);
 
         if (patient == null){
-            return null;
+            throw new ApiException("didn't find the patent");
         }
 
         return healthReadingRepository.findHealthReadingsByPatientId(patientId);
@@ -201,7 +198,7 @@ public class HealthReadingService {
         Patient patient = patientRepository.findPatientById(patientId);
 
         if (patient == null){
-            return null;
+            throw new ApiException("didn't find the patent");
         }
 
         List<HealthReading> latestReadings = new ArrayList<>();
@@ -219,6 +216,34 @@ public class HealthReadingService {
 
         return latestReadings;
     }
+
+
+    public List<HealthReading> getAbnormalHealthReadings(Integer patientId){
+
+        Patient patient = patientRepository.findPatientById(patientId);
+
+        if (patient == null){
+            throw new ApiException("didn't find the patent");
+        }
+
+        List<HealthReading> healthReadings = healthReadingRepository.findHealthReadingsByPatientId(patientId);
+
+        List<HealthReading> abnormalReadings = new ArrayList<>();
+
+        for (HealthReading healthReading : healthReadings){
+
+            if (healthReading.getReadingStatus().equals("elevated") || healthReading.getReadingStatus().equals("low")
+                    || healthReading.getReadingStatus().equals("high") || healthReading.getReadingStatus().equals("critical")){
+
+                abnormalReadings.add(healthReading);
+            }
+        }
+
+        return abnormalReadings;
+    }
+
+
+    //helper method
 
     private String classifyReading(HealthReading healthReading){
 
@@ -277,30 +302,5 @@ public class HealthReadingService {
 
 
         return "not_classified";
-    }
-
-    public List<HealthReading> getAbnormalHealthReadings(Integer patientId){
-
-        Patient patient = patientRepository.findPatientById(patientId);
-
-        if (patient == null){
-            return null;
-        }
-
-        List<HealthReading> healthReadings =
-                healthReadingRepository.findHealthReadingsByPatientId(patientId);
-
-        List<HealthReading> abnormalReadings = new ArrayList<>();
-
-        for (HealthReading healthReading : healthReadings){
-
-            if (healthReading.getReadingStatus().equals("elevated") || healthReading.getReadingStatus().equals("low")
-                    || healthReading.getReadingStatus().equals("high") || healthReading.getReadingStatus().equals("critical")){
-
-                abnormalReadings.add(healthReading);
-            }
-        }
-
-        return abnormalReadings;
     }
 }

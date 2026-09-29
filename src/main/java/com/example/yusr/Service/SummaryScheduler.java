@@ -24,12 +24,9 @@ public class SummaryScheduler {
         List<SummaryPreference> preferences = summaryPreferenceRepository.findSummaryPreferencesByAutoGenerateTrueAndNextGenerationAtLessThanEqual(LocalDateTime.now());
 
         for (SummaryPreference preference : preferences) {
+            careSummaryService.generateAutomaticSummary(preference.getCaregiverId(), preference.getFrequency());
+            summaryPreferenceService.updateAfterGeneration(preference.getId());
 
-            String result = careSummaryService.generateAutomaticSummary(preference.getCaregiverId(), preference.getFrequency());
-
-            if (result.equals("automatic summary generated successfully")) {
-                summaryPreferenceService.updateAfterGeneration(preference.getId());
-            }
         }
     }
 }

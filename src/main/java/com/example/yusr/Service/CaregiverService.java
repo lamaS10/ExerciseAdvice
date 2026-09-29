@@ -1,6 +1,7 @@
 package com.example.yusr.Service;
 
 
+import com.example.yusr.Api.ApiException;
 import com.example.yusr.Model.CareTask;
 import com.example.yusr.Model.Caregiver;
 import com.example.yusr.Model.CaregiverInvitation;
@@ -31,21 +32,26 @@ public class CaregiverService {
     }
 
     public Caregiver getCaregiverById(Integer id){
-        return caregiverRepository.findCaregiverById(id);
-    }
+        Caregiver caregiver = caregiverRepository.findCaregiverById(id);
 
-    public String addCaregiver(Caregiver caregiver){
+        if (caregiver == null){
+            throw new ApiException("caregiver not found");
+        }
+
+        return caregiver;    }
+
+    public void addCaregiver(Caregiver caregiver){
 
         Caregiver checkEmail = caregiverRepository.findCaregiverByEmail(caregiver.getEmail());
 
         if (checkEmail != null){
-            return "email already exists";
+            throw new ApiException("email already exists");
         }
 
         Caregiver checkPhone = caregiverRepository.findCaregiverByPhoneNumber(caregiver.getPhoneNumber());
 
         if (checkPhone != null){
-            return "phone number already exists";
+            throw new ApiException("phone number already exists");
         }
 
         caregiver.setPatientId(null);
@@ -72,32 +78,29 @@ public class CaregiverService {
                             "تم إنشاء حسابك وربطك بالمريض بنجاح 🤍\n\n" +
                             "يمكنك الآن الدخول إلى يسر والبدء بمتابعة الرعاية."
             );
-            return "added and assigned";
         }
 
-        return "added";
     }
 
-    public String updateCaregiver(Integer id, Caregiver caregiver){
+    public void updateCaregiver(Integer id, Caregiver caregiver){
 
         Caregiver oldCaregiver = caregiverRepository.findCaregiverById(id);
 
         if (oldCaregiver == null){
-            return "caregiver not found";
+            throw new ApiException("didn't find the caregiver");
         }
 
         Caregiver checkEmail =
                 caregiverRepository.findCaregiverByEmail(caregiver.getEmail());
 
         if (checkEmail != null && !checkEmail.getId().equals(id)){
-            return "email already exists";
+            throw new ApiException("email already exists");
         }
 
-        Caregiver checkPhone =
-                caregiverRepository.findCaregiverByPhoneNumber(caregiver.getPhoneNumber());
+        Caregiver checkPhone = caregiverRepository.findCaregiverByPhoneNumber(caregiver.getPhoneNumber());
 
         if (checkPhone != null && !checkPhone.getId().equals(id)){
-            return "phone number already exists";
+            throw new ApiException("phone number already exists");
         }
 
         oldCaregiver.setFullName(caregiver.getFullName());
@@ -106,51 +109,51 @@ public class CaregiverService {
         oldCaregiver.setPhoneNumber(caregiver.getPhoneNumber());
 
         caregiverRepository.save(oldCaregiver);
-        return "updated";
+
     }
 
 
 
-    public String deleteCaregiver(Integer id){
+    public void deleteCaregiver(Integer id){
 
         Caregiver caregiver = caregiverRepository.findCaregiverById(id);
 
         if (caregiver == null){
-            return "caregiver not found";
+            throw new ApiException("didn't find the caregiver");
         }
 
         if (caregiver.getPatientId() != null){
-            return "caregiver is assigned to a patient";
+            throw new ApiException("caregiver is assigned to a patient");
         }
 
         caregiverRepository.delete(caregiver);
 
-        return "deleted";
     }
 
     // Sends a WhatsApp invitation to a caregiver to join a patient.
     // Only the primary caregiver can send the invitation.
     // The caregiver will be assigned only after accepting the invitation.
-    public String assignCaregiverToPatient(Integer primaryCaregiverId, Integer patientId, String email, String phoneNumber){
+    public void assignCaregiverToPatient(Integer primaryCaregiverId, Integer patientId, String email, String phoneNumber){
 
         Caregiver primaryCaregiver = caregiverRepository.findCaregiverById(primaryCaregiverId);
 
         if (primaryCaregiver == null) {
-            return "primary caregiver not found";
+            throw new ApiException("didn't find primary caregiver");
         }
 
         Patient patient = patientRepository.findPatientById(patientId);
 
         if (patient == null) {
-            return "patient not found";
+            throw new ApiException("didn't find patient");
+
         }
 
         if (primaryCaregiver.getPatientId() == null || !primaryCaregiver.getPatientId().equals(patientId)) {
-            return "caregiver does not belong to this patient";
+            throw new ApiException("caregiver does not belong to this patient");
         }
 
         if (!primaryCaregiver.getRole().equals("primary")) {
-            return "only primary caregiver can add another caregiver";
+            throw new ApiException("only primary caregiver can add another caregiver");
         }
 
 
@@ -159,7 +162,7 @@ public class CaregiverService {
 
         if (caregiver != null) {
             if (caregiver.getPatientId() != null) {
-                return "caregiver already assigned to a patient";
+                throw new ApiException("caregiver already assigned to a patient");
             }
             phoneNumber = caregiver.getPhoneNumber();
         }
@@ -167,7 +170,7 @@ public class CaregiverService {
         CaregiverInvitation checkInvitation = caregiverInvitationRepository.findCaregiverInvitationByPatientIdAndEmailAndStatus(patientId, email, "pending");
 
         if (checkInvitation != null) {
-            return "caregiver already has a pending invitation";
+            throw new ApiException("caregiver already has a pending invitation");
         }
 
 
@@ -199,36 +202,25 @@ public class CaregiverService {
                 role,
                 patient.getFullName()
         );
-        return "invitation sent successfully";
     }
 
 
 
-    // Links the caregiver to the patient after the invitation is accepted.
-    private void linkCaregiverToPatient(Caregiver caregiver, CaregiverInvitation invitation) {
-
-        caregiver.setPatientId(invitation.getPatientId());
-        caregiver.setRole(invitation.getRole());
-        caregiver.setAssignedAt(LocalDateTime.now());
-        caregiver.setIsCurrentCaregiver(false);
-
-        caregiverRepository.save(caregiver);
-    }
 
 
     // Handles the caregiver response from WhatsApp.
     // Accept: saves the invitation as accepted and assigns the caregiver if registered.
     // Reject: saves the invitation as rejected.
-    public String respondToCaregiverInvitation(String phoneNumber, String response) {
+    public Object respondToCaregiverInvitation(String phoneNumber, String response) {
 
         CaregiverInvitation invitation = caregiverInvitationRepository.findCaregiverInvitationByPhoneNumberAndStatus(phoneNumber, "pending");
 
         if (invitation == null) {
-            return "pending invitation not found";
+            throw new ApiException("pending invitation not found");
         }
 
         if (!response.equalsIgnoreCase("accept") && !response.equalsIgnoreCase("reject")) {
-            return "response must be accept or reject";
+            throw new ApiException("response must be accept or reject");
         }
 
         String internationalPhone = "+966" + phoneNumber.substring(1);
@@ -265,7 +257,7 @@ public class CaregiverService {
         }
 
         if (caregiver.getPatientId() != null) {
-            return "caregiver already assigned to a patient";
+            throw new ApiException("caregiver already assigned to a patient");
         }
 
         linkCaregiverToPatient(caregiver, invitation);
@@ -282,16 +274,12 @@ public class CaregiverService {
 
 
     // Gets the caregiver's latest WhatsApp response and processes the invitation.
-    public String checkCaregiverInvitationResponse(String phoneNumber) {
+    public Object checkCaregiverInvitationResponse(String phoneNumber) {
 
-        CaregiverInvitation invitation =
-                caregiverInvitationRepository.findCaregiverInvitationByPhoneNumberAndStatus(
-                        phoneNumber,
-                        "pending"
-                );
+        CaregiverInvitation invitation = caregiverInvitationRepository.findCaregiverInvitationByPhoneNumberAndStatus(phoneNumber, "pending");
 
         if (invitation == null) {
-            return "pending invitation not found";
+            throw new ApiException("pending invitation not found");
         }
 
         String response = whatsAppService.getLatestCaregiverResponse(
@@ -300,7 +288,7 @@ public class CaregiverService {
         );
 
         if (response == null) {
-            return "no response found";
+            throw new ApiException("no response found");
         }
 
         response = response.trim();
@@ -319,41 +307,39 @@ public class CaregiverService {
 
     // Unlinks a secondary or backup caregiver from the patient without deleting the caregiver account
     @Transactional
-    public String unlinkCaregiverFromPatient(Integer primaryCaregiverId, Integer caregiverId) {
+    public void unlinkCaregiverFromPatient(Integer primaryCaregiverId, Integer caregiverId) {
 
-        Caregiver primaryCaregiver =
-                caregiverRepository.findCaregiverById(primaryCaregiverId);
+        Caregiver primaryCaregiver = caregiverRepository.findCaregiverById(primaryCaregiverId);
 
         if (primaryCaregiver == null) {
-            return "primary caregiver not found";
+            throw new ApiException("primary caregiver not found");
         }
 
-        Caregiver caregiver =
-                caregiverRepository.findCaregiverById(caregiverId);
+        Caregiver caregiver = caregiverRepository.findCaregiverById(caregiverId);
 
         if (caregiver == null) {
-            return "caregiver not found";
+            throw new ApiException("caregiver not found");
         }
 
         if (primaryCaregiver.getPatientId() == null) {
-            return "primary caregiver is not assigned to a patient";
+            throw new ApiException("primary caregiver is not assigned to a patient");
         }
 
         if (!primaryCaregiver.getRole().equals("primary")) {
-            return "only primary caregiver can unlink caregiver";
+            throw new ApiException("only primary caregiver can unlink caregiver");
+
         }
 
         if (caregiver.getPatientId() == null) {
-            return "caregiver is not assigned to a patient";
+            throw new ApiException("caregiver is not assigned to a patient");
         }
 
-        if (!primaryCaregiver.getPatientId()
-                .equals(caregiver.getPatientId())) {
-            return "caregivers do not belong to the same patient";
+        if (!primaryCaregiver.getPatientId().equals(caregiver.getPatientId())) {
+            throw new ApiException("caregivers do not belong to the same patient");
         }
 
         if (caregiver.getRole().equals("primary")) {
-            return "primary caregiver cannot be unlinked";
+            throw new ApiException("primary caregiver cannot be unlinked");
         }
 
         Integer patientId = caregiver.getPatientId();
@@ -364,13 +350,7 @@ public class CaregiverService {
 
             primaryCaregiver.setIsCurrentCaregiver(true);
 
-            List<CareTask> pendingTasks =
-                    careTaskRepository
-                            .findCareTasksByPatientIdAndCaregiverIdAndStatus(
-                                    patientId,
-                                    caregiver.getId(),
-                                    "pending"
-                            );
+            List<CareTask> pendingTasks = careTaskRepository.findCareTasksByPatientIdAndCaregiverIdAndStatus(patientId, caregiver.getId(), "pending");
 
             for (CareTask task : pendingTasks) {
                 task.setCaregiverId(primaryCaregiver.getId());
@@ -387,7 +367,6 @@ public class CaregiverService {
 
         caregiverRepository.save(caregiver);
 
-        return "caregiver unlinked successfully";
     }
 
     public List<Caregiver> getPatientCaregivers(Integer patientId){
@@ -395,45 +374,50 @@ public class CaregiverService {
         Patient patient = patientRepository.findPatientById(patientId);
 
         if (patient == null){
-            return null;
+            throw new ApiException("didn't find the patent");
         }
 
-        return caregiverRepository.findCaregiversByPatientId(patientId);
+        List<Caregiver>caregivers=caregiverRepository.findCaregiversByPatientId(patientId);
+        if (caregivers.isEmpty()){
+            throw new ApiException("patient has no caregivers");
+        }
+        return caregivers;
     }
 
     @Transactional
-    public String transferPrimaryRole(Integer primaryCaregiverId, Integer newPrimaryCaregiverId){
+    public void transferPrimaryRole(Integer primaryCaregiverId, Integer newPrimaryCaregiverId){
 
         Caregiver primaryCaregiver = caregiverRepository.findCaregiverById(primaryCaregiverId);
 
         if (primaryCaregiver == null){
-            return "primary caregiver not found";
+            throw new ApiException("primary caregiver not found");
         }
 
         Caregiver newPrimaryCaregiver = caregiverRepository.findCaregiverById(newPrimaryCaregiverId);
 
         if (newPrimaryCaregiver == null){
-            return "new primary caregiver not found";
+            throw new ApiException("new primary caregiver not found");
         }
 
         // Current caregiver must actually be the primary
         if (!primaryCaregiver.getRole().equals("primary")){
-            return "only primary caregiver can transfer primary role";
+            throw new ApiException("only primary caregiver can transfer primary role");
         }
 
         // Both caregivers must be assigned to a patient
         if (primaryCaregiver.getPatientId() == null || newPrimaryCaregiver.getPatientId() == null){
-            return "caregiver is not assigned to a patient";
+            throw new ApiException("caregiver is not assigned to a patient");
         }
 
         // Both caregivers must belong to the same patient
         if (!primaryCaregiver.getPatientId().equals(newPrimaryCaregiver.getPatientId())){
-            return "caregivers do not belong to the same patient";
+            throw new ApiException("caregivers do not belong to the same patient");
+
         }
 
         // New primary must be secondary or backup
         if (!newPrimaryCaregiver.getRole().equals("secondary") && !newPrimaryCaregiver.getRole().equals("backup")){
-            return "new primary caregiver must be secondary or backup";
+            throw new ApiException("new primary caregiver must be secondary or backup");
         }
 
         // Old primary stays with the patient as secondary
@@ -444,42 +428,33 @@ public class CaregiverService {
 
         caregiverRepository.save(primaryCaregiver);
         caregiverRepository.save(newPrimaryCaregiver);
-
-        return "primary role transferred successfully";
     }
-    @Transactional
-    public String leavePatient(Integer caregiverId, Integer newPrimaryCaregiverId) {
 
-        Caregiver caregiver =
-                caregiverRepository.findCaregiverById(caregiverId);
+
+    @Transactional
+    public Object leavePatient(Integer caregiverId, Integer newPrimaryCaregiverId) {
+
+        Caregiver caregiver = caregiverRepository.findCaregiverById(caregiverId);
 
         if (caregiver == null) {
-            return "caregiver not found";
+            throw new ApiException("caregiver not found");
         }
 
         if (caregiver.getPatientId() == null) {
-            return "caregiver is not assigned to a patient";
+            throw new ApiException("caregiver is not assigned to a patient");
         }
 
         Integer patientId = caregiver.getPatientId();
 
-        Patient patient =
-                patientRepository.findPatientById(patientId);
+        Patient patient = patientRepository.findPatientById(patientId);
 
         if (patient == null) {
-            return "patient not found";
+            throw new ApiException("patient not found");
         }
 
-        Boolean hasOtherCaregiver =
-                caregiverRepository
-                        .existsCaregiverByPatientIdAndIdNot(
-                                patientId,
-                                caregiverId
-                        );
+        Boolean hasOtherCaregiver = caregiverRepository.existsCaregiverByPatientIdAndIdNot(patientId, caregiverId);
 
-        // =========================================
         // Last caregiver leaves
-        // =========================================
         if (!hasOtherCaregiver) {
 
             caregiver.setPatientId(null);
@@ -495,9 +470,7 @@ public class CaregiverService {
             return "caregiver left and patient became inactive";
         }
 
-        // =========================================
         // Secondary / Backup leaves
-        // =========================================
         if (!caregiver.getRole().equals("primary")) {
 
             if (Boolean.TRUE.equals(caregiver.getIsCurrentCaregiver())) {
@@ -512,18 +485,13 @@ public class CaregiverService {
                                 .orElse(null);
 
                 if (primaryCaregiver == null) {
-                    return "primary caregiver not found";
+                    throw new ApiException("primary caregiver not found");
+
                 }
 
                 primaryCaregiver.setIsCurrentCaregiver(true);
 
-                List<CareTask> pendingTasks =
-                        careTaskRepository
-                                .findCareTasksByPatientIdAndCaregiverIdAndStatus(
-                                        patientId,
-                                        caregiver.getId(),
-                                        "pending"
-                                );
+                List<CareTask> pendingTasks = careTaskRepository.findCareTasksByPatientIdAndCaregiverIdAndStatus(patientId, caregiver.getId(), "pending");
 
                 for (CareTask task : pendingTasks) {
                     task.setCaregiverId(primaryCaregiver.getId());
@@ -543,32 +511,24 @@ public class CaregiverService {
             return "caregiver left patient successfully";
         }
 
-        // =========================================
         // Primary leaves while others remain
-        // =========================================
         if (newPrimaryCaregiverId == null) {
-            return "new primary caregiver is required";
+            throw new ApiException("new primary caregiver is required");
         }
 
-        Caregiver newPrimaryCaregiver =
-                caregiverRepository
-                        .findCaregiverById(newPrimaryCaregiverId);
+        Caregiver newPrimaryCaregiver = caregiverRepository.findCaregiverById(newPrimaryCaregiverId);
 
         if (newPrimaryCaregiver == null) {
-            return "new primary caregiver not found";
+            throw new ApiException("new primary caregiver not found");
         }
 
-        if (newPrimaryCaregiver.getPatientId() == null ||
-                !newPrimaryCaregiver.getPatientId()
-                        .equals(patientId)) {
+        if (newPrimaryCaregiver.getPatientId() == null || !newPrimaryCaregiver.getPatientId().equals(patientId)) {
+            throw new ApiException("new primary caregiver does not belong to this patient");
 
-            return "new primary caregiver does not belong to this patient";
         }
 
-        if (!newPrimaryCaregiver.getRole().equals("secondary") &&
-                !newPrimaryCaregiver.getRole().equals("backup")) {
-
-            return "new primary caregiver must be secondary or backup";
+        if (!newPrimaryCaregiver.getRole().equals("secondary") && !newPrimaryCaregiver.getRole().equals("backup")) {
+            throw new ApiException("new primary caregiver must be secondary or backup");
         }
 
         newPrimaryCaregiver.setRole("primary");
@@ -579,13 +539,7 @@ public class CaregiverService {
 
             newPrimaryCaregiver.setIsCurrentCaregiver(true);
 
-            List<CareTask> pendingTasks =
-                    careTaskRepository
-                            .findCareTasksByPatientIdAndCaregiverIdAndStatus(
-                                    patientId,
-                                    caregiver.getId(),
-                                    "pending"
-                            );
+            List<CareTask> pendingTasks = careTaskRepository.findCareTasksByPatientIdAndCaregiverIdAndStatus(patientId, caregiver.getId(), "pending");
 
             for (CareTask task : pendingTasks) {
                 task.setCaregiverId(newPrimaryCaregiver.getId());
@@ -607,87 +561,85 @@ public class CaregiverService {
     }
 
     @Transactional
-    public String acceptCaregiverInvitation(Integer invitationId, Integer caregiverId){
+    public void acceptCaregiverInvitation(Integer invitationId, Integer caregiverId){
 
         CaregiverInvitation invitation = caregiverInvitationRepository.findCaregiverInvitationById(invitationId);
 
         if (invitation == null){
-            return "invitation not found";
+            throw new ApiException("Invitation not found");
         }
 
         Caregiver caregiver = caregiverRepository.findCaregiverById(caregiverId);
 
         if (caregiver == null){
-            return "caregiver not found";
+            throw new ApiException("caregiver not found");
         }
 
         if (!invitation.getStatus().equals("pending")){
-            return "invitation is not pending";
+            throw new ApiException("invitation is not pending");
         }
 
         if (!invitation.getEmail().equals(caregiver.getEmail())){
-            return "invitation does not belong to caregiver";
+            throw new ApiException("invitation does not belong to caregiver");
         }
 
         if (caregiver.getPatientId() != null){
-            return "caregiver already assigned to a patient";
+            throw new ApiException("caregiver already assigned to a patient");
         }
 
         Patient patient = patientRepository.findPatientById(invitation.getPatientId());
 
         if (patient == null){
-            return "patient not found";
+            throw new ApiException("patient not found");
         }
 
         invitation.setStatus("accepted");
         caregiverInvitationRepository.save(invitation);
 
         linkCaregiverToPatient(caregiver, invitation);
-
-        return "invitation accepted and caregiver assigned successfully";
     }
 
 
-    public String rejectCaregiverInvitation(Integer invitationId, Integer caregiverId){
+    public void rejectCaregiverInvitation(Integer invitationId, Integer caregiverId){
 
         CaregiverInvitation invitation = caregiverInvitationRepository.findCaregiverInvitationById(invitationId);
 
         if (invitation == null){
-            return "invitation not found";
+            throw new ApiException("Invitation not found");
         }
 
         Caregiver caregiver = caregiverRepository.findCaregiverById(caregiverId);
 
         if (caregiver == null){
-            return "caregiver not found";
+            throw new ApiException("caregiver not found");
         }
 
         if (!invitation.getStatus().equals("pending")){
-            return "invitation is not pending";
+            throw new ApiException("invitation is not pending");
         }
 
         if (!invitation.getEmail().equals(caregiver.getEmail())){
-            return "invitation does not belong to caregiver";
+            throw new ApiException("invitation does not belong to caregiver");
         }
 
         invitation.setStatus("rejected");
         caregiverInvitationRepository.save(invitation);
 
-        return "invitation rejected";
     }
+
     public CaregiverInvitation getPendingCaregiverInvitation(Integer caregiverId){
 
         Caregiver caregiver = caregiverRepository.findCaregiverById(caregiverId);
 
         if (caregiver == null){
-            return null;
+            throw new ApiException("caregiver not found");
         }
 
-        CaregiverInvitation invitation =
-                caregiverInvitationRepository.findCaregiverInvitationByEmailAndStatus(caregiver.getEmail(), "pending");
+        CaregiverInvitation invitation = caregiverInvitationRepository.findCaregiverInvitationByEmailAndStatus(caregiver.getEmail(), "pending");
 
         if (invitation == null){
-            return null;
+            throw new ApiException("invitation not found");
+
         }
 
         checkCaregiverInvitationResponse(caregiver.getPhoneNumber());
@@ -700,11 +652,12 @@ public class CaregiverService {
         Caregiver caregiver = caregiverRepository.findCaregiverByEmail(email);
 
         if (caregiver == null){
-            return null;
+            throw new ApiException("caregiver not found");
+
         }
 
         if (!caregiver.getPassword().equals(password)){
-            return null;
+            throw new ApiException("email or password is incorrect");
         }
 
         return caregiver;
@@ -715,60 +668,56 @@ public class CaregiverService {
         Patient patient = patientRepository.findPatientById(patientId);
 
         if (patient == null) {
-            return null;
+            throw new ApiException("patient not found");
+
         }
 
-        return caregiverInvitationRepository
-                .findCaregiverInvitationsByPatientIdAndStatus(
-                        patientId,
-                        "pending"
-                );
+        return caregiverInvitationRepository.findCaregiverInvitationsByPatientIdAndStatus(patientId, "pending");
     }
 
-    public String cancelCaregiverInvitation(
-            Integer invitationId,
-            Integer primaryCaregiverId
-    ) {
+    public void cancelCaregiverInvitation(Integer invitationId, Integer primaryCaregiverId) {
 
-        Caregiver primaryCaregiver =
-                caregiverRepository.findCaregiverById(
-                        primaryCaregiverId
-                );
+        Caregiver primaryCaregiver = caregiverRepository.findCaregiverById(primaryCaregiverId);
 
         if (primaryCaregiver == null) {
-            return "primary caregiver not found";
+            throw new ApiException("primary caregiver not found");
         }
 
-        CaregiverInvitation invitation =
-                caregiverInvitationRepository
-                        .findCaregiverInvitationById(
-                                invitationId
-                        );
+        CaregiverInvitation invitation = caregiverInvitationRepository.findCaregiverInvitationById(invitationId);
 
         if (invitation == null) {
-            return "invitation not found";
+            throw new ApiException("invitation not found");
         }
 
         if (!primaryCaregiver.getRole().equals("primary")) {
-            return "only primary caregiver can cancel invitation";
+            throw new ApiException("only primary caregiver can cancel invitation");
+
         }
 
-        if (
-                primaryCaregiver.getPatientId() == null ||
-                        !primaryCaregiver.getPatientId()
-                                .equals(invitation.getPatientId())
-        ) {
-            return "invitation does not belong to this patient";
+        if (primaryCaregiver.getPatientId() == null || !primaryCaregiver.getPatientId().equals(invitation.getPatientId())) {
+            throw new ApiException("invitation does not belong to this patient");
         }
 
         if (!invitation.getStatus().equals("pending")) {
-            return "invitation is not pending";
+            throw new ApiException("invitation is not pending");
         }
 
         invitation.setStatus("cancelled");
 
         caregiverInvitationRepository.save(invitation);
 
-        return "invitation cancelled";
+    }
+
+
+    //helper method
+    // Links the caregiver to the patient after the invitation is accepted.
+    private void linkCaregiverToPatient(Caregiver caregiver, CaregiverInvitation invitation) {
+
+        caregiver.setPatientId(invitation.getPatientId());
+        caregiver.setRole(invitation.getRole());
+        caregiver.setAssignedAt(LocalDateTime.now());
+        caregiver.setIsCurrentCaregiver(false);
+
+        caregiverRepository.save(caregiver);
     }
 }

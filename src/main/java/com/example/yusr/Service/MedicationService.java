@@ -1,10 +1,9 @@
 package com.example.yusr.Service;
 
 
-import com.example.yusr.Model.Caregiver;
+import com.example.yusr.Api.ApiException;
 import com.example.yusr.Model.Medication;
 import com.example.yusr.Model.Patient;
-import com.example.yusr.Repository.CaregiverRepository;
 import com.example.yusr.Repository.MedicationRepository;
 import com.example.yusr.Repository.MedicationScheduleRepository;
 import com.example.yusr.Repository.PatientRepository;
@@ -20,46 +19,42 @@ public class MedicationService {
     private final MedicationRepository medicationRepository;
     private final PatientRepository patientRepository;
     private final MedicationScheduleRepository medicationScheduleRepository;
-    private final CaregiverRepository caregiverRepository;
-    private final WhatsAppService whatsAppService;
+
 
 
     public List<Medication>getMedications(){
         return medicationRepository.findAll();
     }
 
-    public String addMedication(Medication medication){
+    public void addMedication(Medication medication){
 
         Patient checkPatient = patientRepository.findPatientById(medication.getPatientId());
-
         if (checkPatient == null){
-            return "patient not found";
+            throw new ApiException("didn't find the requested patient");
         }
 
         if (medication.getEndDate() != null && medication.getEndDate().isBefore(medication.getStartDate())){
-            return "end date cannot be before start date";
+            throw new ApiException("end date cannot be before start date");
         }
-
         medication.setStatus("active");
-
         medicationRepository.save(medication);
-        return "added";
+
     }
 
-    public String updateMedication(Integer id, Medication medication){
+    public void updateMedication(Integer id, Medication medication){
 
         Medication oldMedication =medicationRepository.findMedicationById(id);
 
         if (oldMedication == null){
-            return "medication not found";
+            throw new ApiException("didn't find the requested medication");
         }
 
         if (!oldMedication.getPatientId().equals(medication.getPatientId())){
-            return "patient id cannot be changed";
+            throw new ApiException("patient id cannot be changed");
         }
 
         if (medication.getEndDate() != null && medication.getEndDate().isBefore(medication.getStartDate())){
-            return "end date cannot be before start date";
+            throw new ApiException("end date cannot be before start date");
         }
 
         oldMedication.setName(medication.getName());
@@ -71,59 +66,49 @@ public class MedicationService {
         oldMedication.setEndDate(medication.getEndDate());
 
         medicationRepository.save(oldMedication);
-        return "updated";
     }
 
-    public String deleteMedication(Integer id){
+    public void deleteMedication(Integer id){
 
         Medication medication = medicationRepository.findMedicationById(id);
 
         if (medication == null){
-            return "medication not found";
+            throw new ApiException("didn't find the requested medication");
         }
 
         Boolean hasSchedules = medicationScheduleRepository.existsMedicationScheduleByMedicationId(id);
 
         if (hasSchedules){
-            return "medication has schedules";
+            throw new ApiException("medication has schedules");
         }
 
         medicationRepository.delete(medication);
-        return "deleted";
     }
 
 
-    public String discontinueMedication(Integer medicationId){
+    public void discontinueMedication(Integer medicationId){
 
         Medication medication = medicationRepository.findMedicationById(medicationId);
 
         if (medication == null){
-            return "medication not found";
+            throw new ApiException("didn't find the requested medication");
         }
 
         if (medication.getStatus().equals("discontinued")){
-            return "medication already discontinued";
+            throw new ApiException("medication already discontinued");
         }
-
         medication.setStatus("discontinued");
         medication.setEndDate(LocalDate.now());
-
         medicationRepository.save(medication);
-
-        return "discontinued";
     }
 
     public List<Medication> getMedicationWarnings(Integer patientId){
-
         Patient patient = patientRepository.findPatientById(patientId);
-
         if (patient == null){
-            return null;
+            throw new ApiException("didn't find the requested patient");
         }
-
         LocalDate today = LocalDate.now();
         LocalDate afterSevenDays = today.plusDays(7);
-
         return medicationRepository.getMedicationAlerts(patientId, today, afterSevenDays);
     }
 
@@ -132,54 +117,45 @@ public class MedicationService {
         Patient patient = patientRepository.findPatientById(patientId);
 
         if (patient == null){
-            return null;
+            throw new ApiException("didn't find the requested patient");
         }
 
         return medicationRepository.findMedicationsByPatientId(patientId);
     }
 
-    public String addMedicationStock(Integer medicationId, Integer quantity){
+    public void addMedicationStock(Integer medicationId, Integer quantity){
 
-        Medication medication =
-                medicationRepository.findMedicationById(medicationId);
+        Medication medication = medicationRepository.findMedicationById(medicationId);
 
         if (medication == null){
-            return "medication not found";
+            throw new ApiException("didn't find the requested medication");
         }
 
         if (quantity == null || quantity <= 0){
-            return "quantity must be more than zero";
+            throw new ApiException("quantity must be more than zero");
         }
 
-        medication.setStockQuantity(
-                medication.getStockQuantity() + quantity
-        );
+        medication.setStockQuantity(medication.getStockQuantity() + quantity);
 
         medicationRepository.save(medication);
 
-        return "stock added";
     }
 
-    public String reactivateMedication(
-            Integer medicationId,
-            LocalDate startDate,
-            LocalDate endDate){
+    public void reactivateMedication(Integer medicationId, LocalDate startDate, LocalDate endDate){
 
-        Medication medication =
-                medicationRepository.findMedicationById(medicationId);
+        Medication medication = medicationRepository.findMedicationById(medicationId);
 
         if (medication == null){
-            return "medication not found";
+            throw new ApiException("didn't find the requested medication");
         }
 
         if (medication.getStatus().equals("active")){
-            return "medication already active";
+            throw new ApiException("medication already active");
         }
 
         if (startDate != null){
-
             if (endDate != null && endDate.isBefore(startDate)){
-                return "end date cannot be before start date";
+                throw new ApiException("end date cannot be before start date");
             }
 
             medication.setStartDate(startDate);
@@ -187,10 +163,7 @@ public class MedicationService {
         }
 
         medication.setStatus("active");
-
         medicationRepository.save(medication);
-
-        return "reactivated";
     }
 
 

@@ -1,6 +1,7 @@
 package com.example.yusr.Service;
 
 
+import com.example.yusr.Api.ApiException;
 import com.example.yusr.Model.ChronicCondition;
 import com.example.yusr.Model.Patient;
 import com.example.yusr.Repository.ChronicConditionRepository;
@@ -21,48 +22,45 @@ public class ChronicConditionService {
         return chronicConditionRepository.findAll();
     }
 
-    public Boolean addChronicCondition(ChronicCondition chronicCondition){
+    public void addChronicCondition(ChronicCondition chronicCondition){
         Patient checkPatient=patientRepository.findPatientById(chronicCondition.getPatientId());
 
         if (checkPatient==null){
-            return false;
+            throw new ApiException("didn't find patient with requested id");
         }
 
         chronicConditionRepository.save(chronicCondition);
-        return true;
     }
 
 
 
-    public String updateChronicCondition(Integer id, ChronicCondition chronicCondition){
+    public void updateChronicCondition(Integer id, ChronicCondition chronicCondition){
 
         ChronicCondition oldChronicCondition =chronicConditionRepository.findChronicConditionById(id);
 
         if (oldChronicCondition == null){
-            return "chronic condition not found";
+            throw new ApiException("didn't find Chronic Condition with requested id");
         }
 
         if (!oldChronicCondition.getPatientId().equals(chronicCondition.getPatientId())){
-            return "patient id cannot be changed";
+            throw new ApiException("patient id cannot be changed");
         }
         oldChronicCondition.setConditionName(chronicCondition.getConditionName());
         oldChronicCondition.setDiagnosisDate(chronicCondition.getDiagnosisDate());
         oldChronicCondition.setNotes(chronicCondition.getNotes());
 
         chronicConditionRepository.save(oldChronicCondition);
-        return "updated";
     }
 
-    public Boolean deleteChronicCondition(Integer id){
+    public void deleteChronicCondition(Integer id){
 
         ChronicCondition chronicCondition = chronicConditionRepository.findChronicConditionById(id);
 
         if (chronicCondition == null){
-            return false;
+            throw new ApiException("didn't find Chronic Condition with requested id");
         }
 
         chronicConditionRepository.delete(chronicCondition);
-        return true;
     }
 
 }
